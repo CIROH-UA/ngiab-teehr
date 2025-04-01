@@ -1,5 +1,6 @@
-# ngiab-teehr
-A repository for coupling [TEEHR](https://rtiinternational.github.io/teehr/) with [Nextgen-In-A-Box (NGIAB)](https://github.com/jameshalgren/NGIAB-CloudInfra) simulation output.
+# NGIAB TEEHR Integration
+
+A repository for coupling [TEEHR](https://rtiinternational.github.io/teehr/) with [Nextgen In A Box (NGIAB)](https://github.com/jameshalgren/NGIAB-CloudInfra) simulation output.
 
 Warning: This code is experimental!
 
