@@ -4,9 +4,7 @@ import shutil
 import logging
 
 import pandas as pd
-from teehr import Evaluation
-from teehr import Metrics as metrics
-from teehr.models.tables import Configuration
+import teehr
 # from dask.distributed import Client
 
 from utils import (
@@ -39,7 +37,7 @@ NGEN_CACHE_OUTPUT = Path(TEST_STUDY_DIR, "cache", "ngen_output.parquet")
 def main():
 
     # Create a TEEHR Evaluation object and initialize a dataset.
-    ev = Evaluation(dir_path=TEST_STUDY_DIR)
+    ev = teehr.Evaluation(dir_path=TEST_STUDY_DIR)
     ev.enable_logging()
     ev.clone_template()
 
@@ -118,7 +116,7 @@ def main():
     )
     # Load the NGEN simulation timeseries
     ev.configurations.add(
-        Configuration(
+        teehr.Configuration(
             name="ngen",
             type="secondary",
             description="Nextgen simulation output"
@@ -165,10 +163,10 @@ def main():
         order_by=["primary_location_id", "configuration_name"],
         group_by=["primary_location_id", "configuration_name"],
         include_metrics=[
-            metrics.KlingGuptaEfficiency(),
-            metrics.NashSutcliffeEfficiency(),
-            metrics.RelativeBias(),
-            metrics.RootMeanStandardDeviationRatio(),
+            teehr.DeterministicMetrics.KlingGuptaEfficiency(),
+            teehr.DeterministicMetrics.NashSutcliffeEfficiency(),
+            teehr.DeterministicMetrics.RelativeBias(),
+            teehr.DeterministicMetrics.RootMeanStandardDeviationRatio(),
         ]
     ).to_pandas()
     df.to_csv(Path(TEST_STUDY_DIR, "metrics.csv"), index=False)

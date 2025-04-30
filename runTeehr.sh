@@ -133,6 +133,7 @@ if [[ "$run_teehr_choice" == [Yy]* ]]; then
         while docker inspect -f '{{.State.Running}}' "teehr-evaluation" 2>/dev/null | grep -q true; do
             sleep 10
         done
+        sleep 2
         docker run --rm --name teehr-evaluation -v "$DATA_FOLDER_PATH:/app/data" "$IMAGE_NAME:$teehr_image_tag" run_teehr
     else
         # Run the TEEHR evaluation
