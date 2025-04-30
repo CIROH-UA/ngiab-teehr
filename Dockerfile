@@ -10,6 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin \
     python3-gdal
 
+RUN pip install uv
+RUN uv pip install teehr --system
+RUN python -m teehr.utils.install_spark_jars
+
 # Runtime stage
 FROM python:3.11.11-slim-bookworm
 
@@ -18,7 +22,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdal-dev \
     gdal-bin \
-    openjdk-17-jdk
+    openjdk-17-jdk \
+    procps
 
 RUN if [ "$(dpkg --print-architecture)" = "arm64" ]; then \
         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64; \
@@ -37,10 +42,10 @@ COPY scripts/ .
 COPY interactive_session.sh launch/interactive_session.sh
 RUN chmod +x /app/launch/interactive_session.sh
 
-# Install JupyterLab and teehr
-RUN pip install --no-cache-dir jupyterlab teehr
+# Install JupyterLab
+RUN pip install --no-cache-dir jupyterlab
 # Download the required JAR files for Spark to interact with AWS S3.
-RUN python -m teehr.utils.install_spark_jars
+# RUN python -m teehr.utils.install_spark_jars
 
 # Expose the port that JupyterLab uses
 EXPOSE 8888

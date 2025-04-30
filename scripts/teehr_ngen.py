@@ -156,7 +156,7 @@ def main():
     )
 
     # Create the joined timeseries table
-    ev.joined_timeseries.create(execute_udf=False)
+    ev.joined_timeseries.create()
 
     # Calculate some metrics
     df = ev.metrics.query(
