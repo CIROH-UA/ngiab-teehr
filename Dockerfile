@@ -38,5 +38,13 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /app /app
 
 COPY scripts/ .
+COPY interactive_session.sh launch/interactive_session.sh
+RUN chmod +x /app/launch/interactive_session.sh
 
-ENTRYPOINT ["python", "teehr_ngen.py"]
+# Install JupyterLab and any other dependencies
+RUN pip install --no-cache-dir jupyterlab
+
+# Expose the port that JupyterLab uses
+EXPOSE 8888
+
+ENTRYPOINT ["/app/launch/interactive_session.sh"]
