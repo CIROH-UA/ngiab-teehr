@@ -10,10 +10,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin \
     python3-gdal
 
-COPY requirements.txt .
-RUN pip install uv
-RUN uv pip install --no-cache-dir -r requirements.txt --system
-
 # Runtime stage
 FROM python:3.11.11-slim-bookworm
 
@@ -41,8 +37,10 @@ COPY scripts/ .
 COPY interactive_session.sh launch/interactive_session.sh
 RUN chmod +x /app/launch/interactive_session.sh
 
-# Install JupyterLab and any other dependencies
-RUN pip install --no-cache-dir jupyterlab
+# Install JupyterLab and teehr
+RUN pip install --no-cache-dir jupyterlab teehr
+# Download the required JAR files for Spark to interact with AWS S3.
+RUN python -m teehr.utils.install_spark_jars
 
 # Expose the port that JupyterLab uses
 EXPOSE 8888

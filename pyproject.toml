@@ -9,9 +9,7 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.10"
-bokeh = "^3.6.0"
-dask-expr = "^1.1.15"
-teehr = {git = "https://github.com/RTIInternational/teehr.git", rev = "main"}
+teehr = "^0.4.10"
 
 
 [build-system]
