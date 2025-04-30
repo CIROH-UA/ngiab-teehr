@@ -39,15 +39,13 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /app /app
 
 COPY scripts/ .
-COPY interactive_session.sh launch/interactive_session.sh
-RUN chmod +x /app/launch/interactive_session.sh
+COPY run_controller.sh launch/run_controller.sh
+RUN chmod +x /app/launch/run_controller.sh
 
 # Install JupyterLab
 RUN pip install --no-cache-dir jupyterlab
-# Download the required JAR files for Spark to interact with AWS S3.
-# RUN python -m teehr.utils.install_spark_jars
 
 # Expose the port that JupyterLab uses
 EXPOSE 8888
 
-ENTRYPOINT ["/app/launch/interactive_session.sh"]
+ENTRYPOINT ["/app/launch/run_controller.sh"]
