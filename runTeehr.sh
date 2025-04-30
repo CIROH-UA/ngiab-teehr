@@ -149,7 +149,7 @@ if [[ "$run_teehr_choice" == [Yy]* ]]; then
     echo -e "${GREEN}TEEHR evaluation complete.${RESET}\n"
     docker run --rm --name teehr-evaluation -d -p 8888:8888 -v "$DATA_FOLDER_PATH:/app/data"  "$IMAGE_NAME:$teehr_image_tag" run_jupyter
     sleep 2
-    firefox http://localhost:8888/lab/tree/test_notebook.ipynb
+    firefox http://localhost:8888/lab/tree/01_Explore_NGIAB_output.ipynb
 else
     echo -e "${CYAN}Skipping TEEHR evaluation step.${RESET}\n"
 fi
