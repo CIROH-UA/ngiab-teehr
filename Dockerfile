@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.11.11-slim-bookworm as builder
+FROM python:3.12-slim-bookworm as builder
 
 WORKDIR /app
 
@@ -15,7 +15,7 @@ RUN pip install uv
 RUN uv pip install --no-cache-dir -r requirements.txt --system
 
 # Runtime stage
-FROM python:3.11.11-slim-bookworm
+FROM python:3.12-slim-bookworm
 
 WORKDIR /app
 
@@ -34,7 +34,7 @@ ENV JAVA_HOME=$JAVA_HOME
 ENV PATH=$PATH:$JAVA_HOME/bin
 ENV GDAL_CONFIG=/usr/bin/gdal-config
 
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /app /app
 
 COPY scripts/ .

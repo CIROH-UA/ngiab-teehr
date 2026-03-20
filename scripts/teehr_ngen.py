@@ -1,12 +1,14 @@
 """This is an example of how to use TEEHR in NGEN."""
 from pathlib import Path
+import argparse
+import re
 import shutil
 import logging
 
 import pandas as pd
-from teehr import Evaluation
-from teehr import Metrics as metrics
-from teehr.models.tables import Configuration
+from teehr import LocalReadWriteEvaluation
+from teehr import Configuration
+from teehr import DeterministicMetrics as dm
 # from dask.distributed import Client
 
 from utils import (
@@ -21,89 +23,103 @@ from utils import (
 
 logger = logging.getLogger(__name__)
 
-# In NGEN this will be provided by NGEN.
-NGEN_DATA_DIR = Path("data")
-# NGEN_DATA_DIR = Path("/home/sam/ngiab_preprocess_output/cat-508412")
+NGEN_OUTPUT_DIR = Path("/home/slamont/NextGen/ngen-data/AWI_16_2863657_007")  # for testing
+# NGEN_OUTPUT_DIR = Path("data")
 
-# Set a path to the directory where the evaluation will be created
-TEST_STUDY_DIR = Path(NGEN_DATA_DIR, "teehr")
-shutil.rmtree(TEST_STUDY_DIR, ignore_errors=True)
-TEST_STUDY_DIR.mkdir(parents=True, exist_ok=True)
+NGEN_METRICS_TABLE_NAME = "ngen_metrics"
 
-LOCATIONS = Path(TEST_STUDY_DIR, "cache", "locations.parquet")
-NWM_USGS_XWALK = Path(TEST_STUDY_DIR, "nwm_usgs_crosswalk.parquet")
-NGEN_USGS_XWALK = Path(TEST_STUDY_DIR, "ngen_usgs_crosswalk.parquet")
-NGEN_CACHE_OUTPUT = Path(TEST_STUDY_DIR, "cache", "ngen_output.parquet")
+rmsdr = dm.RootMeanStandardDeviationRatio()
+rbias = dm.RelativeBias()
+nse = dm.NashSutcliffeEfficiency()
+kge = dm.KlingGuptaEfficiency()
+
+rmsdr.add_epsilon = True
+rbias.add_epsilon = True
+nse.add_epsilon = True
+kge.add_epsilon = True
+
+SIM_METRICS = [
+    rmsdr,
+    rbias,
+    nse,
+    kge
+]
 
 
-def main():
+def main(
+    data_folder_stem: str,
+    teehr_evaluation_dir: Path
+):
 
-    # Create a TEEHR Evaluation object and initialize a dataset.
-    ev = Evaluation(dir_path=TEST_STUDY_DIR)
+    ngen_configuration_name = "ngen_" + data_folder_stem
+
+    # 1. Create a TEEHR Evaluation object and initialize a dataset.
+    ev = LocalReadWriteEvaluation(
+        dir_path=teehr_evaluation_dir,
+        create_dir=True  # currently doesn't do anything if it already exists
+    )
     ev.enable_logging()
-    ev.clone_template()
 
+    # 2. Set up paths for caching NGEN output, locations, and crosswalks.
+    ngen_output_cache_filepath = Path(
+        ev.cache_dir,
+        "ngen_output",
+        "formatted_ngen_output.parquet"
+    )
+    ngen_output_cache_filepath.parent.mkdir(parents=True, exist_ok=True)
+
+    # 3. Extract data from NGEN output and prepare for loading to TEEHR
     # Get the start and end time of the simulation.
-    start_date, end_date = get_simulation_start_end_time(NGEN_DATA_DIR)
-
-    # Get the USGS to NWM crosswalk and USGS point geometry from s3.
-    usgs_nwm_xwalk_df = get_usgs_nwm30_crosswalk()
-    usgs_nwm_xwalk_df = usgs_nwm_xwalk_df.set_index("primary_location_id")
-    usgs_point_geom = get_usgs_point_geometry()
-    usgs_point_geom = usgs_point_geom.set_index("id")
+    start_date, end_date = get_simulation_start_end_time(NGEN_OUTPUT_DIR)
 
     # Get the NGEN-USGS gages from the hydrofabric.
-    ngen_usgs_gages = get_gages_from_hydrofabric(NGEN_DATA_DIR)
+    ngen_usgs_gages = get_gages_from_hydrofabric(NGEN_OUTPUT_DIR)
     if len(ngen_usgs_gages) == 0:
         raise ValueError(
             "No USGS gages found in the hydrofabric!"
-            f" Output directory: {NGEN_DATA_DIR.stem}"
+            f" Output directory: {NGEN_OUTPUT_DIR.stem}"
         )
     logger.info(f"Found {len(ngen_usgs_gages)} USGS gages in the hydrofabric.")
 
     # Check for netcdf or csv output files.
-    sim_output_format = get_simulation_output_format(NGEN_DATA_DIR)
+    sim_output_format = get_simulation_output_format(NGEN_OUTPUT_DIR)
     logger.info(f"Simulation output format: {sim_output_format}")
 
     # Read the NGEN output timeseries and link to USGS and NWM ID's
     gage_output_list = []
     for gage_pair in ngen_usgs_gages:
-        if "usgs-" + gage_pair[1] not in usgs_nwm_xwalk_df.index:
-            continue
         if sim_output_format == "netcdf":
             gage_output = get_simulation_output_netcdf(
                 gage_pair[0],
-                NGEN_DATA_DIR
+                NGEN_OUTPUT_DIR
             )
         elif sim_output_format == "csv":
             gage_output = get_simulation_output_csv(
                 gage_pair[0],
-                NGEN_DATA_DIR
+                NGEN_OUTPUT_DIR
             )
         gage_output["ngen_id"] = "ngen-" + gage_pair[0].split("-")[1]
         gage_output["usgs_id"] = "usgs-" + gage_pair[1]
-        gage_output["nwm_id"] = usgs_nwm_xwalk_df["secondary_location_id"].loc["usgs-" + gage_pair[1]]
         gage_output_list.append(gage_output)
     all_ngen_output = pd.concat(gage_output_list)
-    # print(all_ngen_output)
-    all_ngen_output.to_parquet(NGEN_CACHE_OUTPUT)
+    all_ngen_output.to_parquet(ngen_output_cache_filepath)
 
     # Get primary locations and load to dataset.
-    locations_df = usgs_point_geom.loc[all_ngen_output["usgs_id"].unique()]
-    locations_df.reset_index(inplace=True)
-    locations_df.to_parquet(LOCATIONS)
+    usgs_location_ids = all_ngen_output["usgs_id"].unique().tolist()
 
+    # 4. Load the data to TEEHR.
     # Load the location data (USGS points)
-    ev.locations.load_spatial(in_path=LOCATIONS)
-
-    # Load the USGS-NWM Crosswalk.
-    usgs_nwm_eval_xwalk_df = usgs_nwm_xwalk_df.loc[locations_df.id]
-    usgs_nwm_eval_xwalk_df.reset_index(inplace=True)
-    usgs_nwm_eval_xwalk_df.to_parquet(NWM_USGS_XWALK)
-    ev.location_crosswalks.load_parquet(
-        in_path=NWM_USGS_XWALK
+    ev.download.locations(
+        ids=usgs_location_ids,
+        load=True
     )
-    # Load the USGS-NGEN Crosswalk.
+    teehr_usgs_locations = ev.locations.to_pandas()["id"].tolist()
+    ev.download.location_crosswalks(
+        primary_location_id=teehr_usgs_locations,
+        secondary_location_id_prefix="nwm30",
+        load=True
+    )
+    # Get the USGS-NGEN Crosswalk.
     tmp_df = all_ngen_output[~all_ngen_output["ngen_id"].duplicated()]
     ngen_usgs_eval_xwalk_df = tmp_df[["usgs_id", "ngen_id"]].copy()
     ngen_usgs_eval_xwalk_df.rename(
@@ -112,32 +128,57 @@ def main():
             "ngen_id": "secondary_location_id"
         }, inplace=True
     )
-    ngen_usgs_eval_xwalk_df.to_parquet(NGEN_USGS_XWALK)
-    ev.location_crosswalks.load_parquet(
-        in_path=NGEN_USGS_XWALK
+    # Drop any entries not in the TEEHR locations table.
+    ngen_usgs_eval_xwalk_df = ngen_usgs_eval_xwalk_df[
+        ngen_usgs_eval_xwalk_df["primary_location_id"]
+        .isin(teehr_usgs_locations)
+    ]
+    ev.location_crosswalks.load_dataframe(
+        df=ngen_usgs_eval_xwalk_df,
+        write_mode="append"
     )
-    # Load the NGEN simulation timeseries
+    # Add the configuration names.
     ev.configurations.add(
         Configuration(
-            name="ngen",
+            name=ngen_configuration_name,
             type="secondary",
             description="Nextgen simulation output"
         )
     )
-    # Load the NWM retrospective timeseries
-    # client = Client()
-    ev.fetch.nwm_retrospective_points(
-        nwm_version="nwm30",
-        variable_name="streamflow",
-        start_date=start_date,
-        end_date=end_date
+    ev.download.configurations(
+        name="usgs_observations",
+        load=True
     )
-    # client.close()
-
+    ev.download.configurations(
+        name="nwm30_retrospective",
+        load=True
+    )
+    # 5. Load the timeseries.
+    # Download primary (observed) timeseries from the TEEHR-Cloud warehouse.
+    ev.download.primary_timeseries(
+        configuration_name="usgs_observations",
+        primary_location_id=teehr_usgs_locations,
+        start_date=start_date,
+        end_date=end_date,
+        load=True,
+        page_size=2000000,
+        timeout=120
+    )
+    # Download secondary (simulated) timeseries from the TEEHR-Cloud warehouse.
+    ev.download.secondary_timeseries(
+        configuration_name="nwm30_retrospective",
+        primary_location_id=teehr_usgs_locations,
+        start_date=start_date,
+        end_date=end_date,
+        load=True,
+        page_size=2000000,
+        timeout=120
+    )
     # Load the NGEN simulation timeseries
-    # client = Client()
-    ev.secondary_timeseries.load_parquet(
-        in_path=NGEN_CACHE_OUTPUT,
+    ngen_df = pd.read_parquet(ngen_output_cache_filepath)
+    ngen_df = ngen_df[ngen_df["usgs_id"].isin(teehr_usgs_locations)]
+    ev.secondary_timeseries.load_dataframe(
+        df=ngen_df,
         field_mapping={
             "current_time": "value_time",
             "flow": "value",
@@ -147,38 +188,49 @@ def main():
             "reference_time": None,
             "unit_name": "m^3/s",
             "variable_name": "streamflow_hourly_inst",
-            "configuration_name": "ngen"
+            "configuration_name": ngen_configuration_name
         }
     )
 
-    # Load the USGS observations timeseries
-    ev.fetch.usgs_streamflow(
-        start_date=start_date,
-        end_date=end_date
-    )
-
-    # Create the joined timeseries table
-    ev.joined_timeseries.create(execute_udf=False)
-
-    # Calculate some metrics
-    df = ev.metrics.query(
-        order_by=["primary_location_id", "configuration_name"],
-        group_by=["primary_location_id", "configuration_name"],
-        include_metrics=[
-            metrics.KlingGuptaEfficiency(),
-            metrics.NashSutcliffeEfficiency(),
-            metrics.RelativeBias(),
-            metrics.RootMeanStandardDeviationRatio(),
-        ]
-    ).to_pandas()
-    df.to_csv(Path(TEST_STUDY_DIR, "metrics.csv"), index=False)
-
-    # Plotting functionality is in development.
-    ts_df = ev.secondary_timeseries.to_pandas()
-    ts_df.teehr.timeseries_plot(
-        output_dir=TEST_STUDY_DIR
+    # if ev.table(NGEN_METRICS_TABLE_NAME).to_sdf() is None:
+    (
+        ev
+        .joined_timeseries_view()
+        .aggregate(
+            group_by=["primary_location_id", "configuration_name"],
+            metrics=SIM_METRICS
+        )
+        .order_by(["primary_location_id", "configuration_name"])
+        .write(
+            write_mode="create_or_replace",
+            table_name=NGEN_METRICS_TABLE_NAME
+        )
     )
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--data_folder_stem",
+        type=str,
+        help="Stem of the data folder (basename of DATA_FOLDER_PATH)"
+    )
+    parser.add_argument(
+        "--teehr_evaluation_dir",
+        type=str,
+        help="Path to the directory where TEEHR evaluation output will be stored"
+    )
+    args = parser.parse_args()
+    if args.data_folder_stem is None:
+        args.data_folder_stem = "AWI_16_2863657_007"  # for testing locally
+        # raise ValueError("Please provide a data folder stem using --data_folder_stem")
+    data_folder_stem = re.sub(
+        r"[^a-zA-Z0-9_]",
+        "_",
+        args.data_folder_stem
+    ).lower()
+    if args.teehr_evaluation_dir is None:
+        args.teehr_evaluation_dir = "/home/slamont/temp/ngiab_teehr_warehouse"  # for testing locally
+        # raise ValueError("Please provide a TEEHR evaluation directory using --teehr_evaluation_dir")
+    teehr_evaluation_dir = Path(args.teehr_evaluation_dir)
+    main(data_folder_stem, teehr_evaluation_dir)
