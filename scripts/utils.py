@@ -5,36 +5,10 @@ import logging
 import sqlite3
 import json
 
-# import geopandas as gpd
 import pandas as pd
 import xarray as xr
 
 logger = logging.getLogger(__name__)
-
-# USGS_NWM30_XWALK = "s3://ciroh-rti-public-data/teehr-data-warehouse/common/crosswalks/usgs_nwm30_crosswalk.conus.parquet"  # noqa
-# USGS_POINT_GEOMETRY = "s3://ciroh-rti-public-data/teehr-data-warehouse/common/geometry/usgs_point_geometry.all.parquet"  # noqa
-
-
-# def get_usgs_nwm30_crosswalk():
-#     return pd.read_parquet(
-#         USGS_NWM30_XWALK,
-#         storage_options={
-#             "client_kwargs":
-#                 {"region_name": "us-east-2"},
-#                 "anon": True
-#             }
-#         )
-
-
-# def get_usgs_point_geometry():
-#     return gpd.read_parquet(
-#         USGS_POINT_GEOMETRY,
-#         storage_options={
-#             "client_kwargs":
-#                 {"region_name": "us-east-2"},
-#                 "anon": True
-#             }
-#         )
 
 
 def get_simulation_output_format(folder_to_eval):

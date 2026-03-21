@@ -1,19 +1,30 @@
-"""This is an example of how to use TEEHR in NGEN."""
+"""Run a TEEHR evaluation on NGEN output.
+
+This script assumes that the directory name of the NGEN output contains
+a unique identifier for the simulation (e.g. AWI_16_2863657_007).
+The script will read the NGEN output, extract the relevant data, and load
+it into a local TEEHR Evaluation. USGS observations and NWM v3.0 retrospective
+simulation timeseries are downloaded from the TEEHR-Cloud data warehouse
+for the same locations and time period. It will then compute metrics
+comparing the NGEN output and NWM simulation to observed USGS streamflow data
+and write the metrics to a new table in the local TEEHR warehouse.
+
+The location of the local TEEHR Evaluation can be specified by the user in the
+runTeehr.sh script. This means that several NGIAB runs can point to the same
+TEEHR Evaluation, so that metrics from different runs can be compared within
+the same evaluation.
+"""
 from pathlib import Path
 import argparse
 import re
-import shutil
 import logging
 
 import pandas as pd
 from teehr import LocalReadWriteEvaluation
 from teehr import Configuration
 from teehr import DeterministicMetrics as dm
-# from dask.distributed import Client
 
 from utils import (
-    get_usgs_nwm30_crosswalk,
-    get_usgs_point_geometry,
     get_simulation_output_csv,
     get_simulation_output_netcdf,
     get_gages_from_hydrofabric,
@@ -23,8 +34,8 @@ from utils import (
 
 logger = logging.getLogger(__name__)
 
-NGEN_OUTPUT_DIR = Path("/home/slamont/NextGen/ngen-data/AWI_16_2863657_007")  # for testing
-# NGEN_OUTPUT_DIR = Path("data")
+# NGEN_OUTPUT_DIR = Path("/home/slamont/NextGen/ngen-data/AWI_16_2863657_007")  # for testing
+NGEN_OUTPUT_DIR = Path("data")
 
 NGEN_METRICS_TABLE_NAME = "ngen_metrics"
 
@@ -50,28 +61,23 @@ def main(
     data_folder_stem: str,
     teehr_evaluation_dir: Path
 ):
-
     ngen_configuration_name = "ngen_" + data_folder_stem
-
-    # 1. Create a TEEHR Evaluation object and initialize a dataset.
+    # Create a TEEHR Evaluation object and initialize a dataset.
     ev = LocalReadWriteEvaluation(
         dir_path=teehr_evaluation_dir,
         create_dir=True  # currently doesn't do anything if it already exists
     )
     ev.enable_logging()
-
-    # 2. Set up paths for caching NGEN output, locations, and crosswalks.
+    # Set up path for caching NGEN output.
     ngen_output_cache_filepath = Path(
         ev.cache_dir,
         "ngen_output",
         "formatted_ngen_output.parquet"
     )
     ngen_output_cache_filepath.parent.mkdir(parents=True, exist_ok=True)
-
-    # 3. Extract data from NGEN output and prepare for loading to TEEHR
+    # Extract data from NGEN output and prepare for loading to TEEHR.
     # Get the start and end time of the simulation.
     start_date, end_date = get_simulation_start_end_time(NGEN_OUTPUT_DIR)
-
     # Get the NGEN-USGS gages from the hydrofabric.
     ngen_usgs_gages = get_gages_from_hydrofabric(NGEN_OUTPUT_DIR)
     if len(ngen_usgs_gages) == 0:
@@ -80,12 +86,11 @@ def main(
             f" Output directory: {NGEN_OUTPUT_DIR.stem}"
         )
     logger.info(f"Found {len(ngen_usgs_gages)} USGS gages in the hydrofabric.")
-
     # Check for netcdf or csv output files.
+    # TODO: Add support for parquet here?
     sim_output_format = get_simulation_output_format(NGEN_OUTPUT_DIR)
     logger.info(f"Simulation output format: {sim_output_format}")
-
-    # Read the NGEN output timeseries and link to USGS and NWM ID's
+    # Read the NGEN output timeseries.
     gage_output_list = []
     for gage_pair in ngen_usgs_gages:
         if sim_output_format == "netcdf":
@@ -103,11 +108,8 @@ def main(
         gage_output_list.append(gage_output)
     all_ngen_output = pd.concat(gage_output_list)
     all_ngen_output.to_parquet(ngen_output_cache_filepath)
-
-    # Get primary locations and load to dataset.
+    # Get primary locations and load to the TEEHR Evaluation.
     usgs_location_ids = all_ngen_output["usgs_id"].unique().tolist()
-
-    # 4. Load the data to TEEHR.
     # Load the location data (USGS points)
     ev.download.locations(
         ids=usgs_location_ids,
@@ -119,7 +121,7 @@ def main(
         secondary_location_id_prefix="nwm30",
         load=True
     )
-    # Get the USGS-NGEN Crosswalk.
+    # Load the USGS-NGEN Crosswalk.
     tmp_df = all_ngen_output[~all_ngen_output["ngen_id"].duplicated()]
     ngen_usgs_eval_xwalk_df = tmp_df[["usgs_id", "ngen_id"]].copy()
     ngen_usgs_eval_xwalk_df.rename(
@@ -153,8 +155,8 @@ def main(
         name="nwm30_retrospective",
         load=True
     )
-    # 5. Load the timeseries.
-    # Download primary (observed) timeseries from the TEEHR-Cloud warehouse.
+    # Load the timeseries.
+    # Download primary (USGS) timeseries from the TEEHR-Cloud warehouse.
     ev.download.primary_timeseries(
         configuration_name="usgs_observations",
         primary_location_id=teehr_usgs_locations,
@@ -164,7 +166,7 @@ def main(
         page_size=2000000,
         timeout=120
     )
-    # Download secondary (simulated) timeseries from the TEEHR-Cloud warehouse.
+    # Download secondary (NWM) timeseries from the TEEHR-Cloud warehouse.
     ev.download.secondary_timeseries(
         configuration_name="nwm30_retrospective",
         primary_location_id=teehr_usgs_locations,
@@ -177,22 +179,19 @@ def main(
     # Load the NGEN simulation timeseries
     ngen_df = pd.read_parquet(ngen_output_cache_filepath)
     ngen_df = ngen_df[ngen_df["usgs_id"].isin(teehr_usgs_locations)]
+    ngen_df["reference_time"] = None
+    ngen_df["unit_name"] = "m^3/s"
+    ngen_df["variable_name"] = "streamflow_hourly_inst"
+    ngen_df["configuration_name"] = ngen_configuration_name
     ev.secondary_timeseries.load_dataframe(
         df=ngen_df,
         field_mapping={
             "current_time": "value_time",
             "flow": "value",
             "ngen_id": "location_id"
-        },
-        constant_field_values={
-            "reference_time": None,
-            "unit_name": "m^3/s",
-            "variable_name": "streamflow_hourly_inst",
-            "configuration_name": ngen_configuration_name
         }
     )
-
-    # if ev.table(NGEN_METRICS_TABLE_NAME).to_sdf() is None:
+    # Write metrics to a new table (overwrite if it already exists).
     (
         ev
         .joined_timeseries_view()
@@ -222,15 +221,15 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     if args.data_folder_stem is None:
-        args.data_folder_stem = "AWI_16_2863657_007"  # for testing locally
-        # raise ValueError("Please provide a data folder stem using --data_folder_stem")
+        # args.data_folder_stem = "AWI_16_2863657_007"  # for testing locally
+        raise ValueError("Please provide a data folder stem using --data_folder_stem")
     data_folder_stem = re.sub(
         r"[^a-zA-Z0-9_]",
         "_",
         args.data_folder_stem
     ).lower()
     if args.teehr_evaluation_dir is None:
-        args.teehr_evaluation_dir = "/home/slamont/temp/ngiab_teehr_warehouse"  # for testing locally
-        # raise ValueError("Please provide a TEEHR evaluation directory using --teehr_evaluation_dir")
+        # args.teehr_evaluation_dir = "/home/slamont/temp/ngiab_teehr_warehouse"  # for testing locally
+        raise ValueError("Please provide a TEEHR evaluation directory using --teehr_evaluation_dir")
     teehr_evaluation_dir = Path(args.teehr_evaluation_dir)
     main(data_folder_stem, teehr_evaluation_dir)
