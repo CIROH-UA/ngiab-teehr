@@ -390,7 +390,7 @@ if [[ "$run_teehr_choice" =~ ^[Yy] ]]; then
 
     # Run the TEEHR container with a name for easier cleanup
     DATA_FOLDER_STEM=$(basename "$DATA_FOLDER_PATH")
-    if ! docker run --name "$CONTAINER_NAME" --rm -v "$DATA_FOLDER_PATH:/app/data" -v "$TEEHR_EVALUATION_DIR:$TEEHR_EVALUATION_DIR" "${IMAGE_NAME}:${teehr_image_tag}" --data_folder_stem "$DATA_FOLDER_STEM" --teehr_evaluation_dir "$TEEHR_EVALUATION_DIR"; then
+    if ! docker run --name "$CONTAINER_NAME" --user "$(id -u):$(id -g)" --rm -v "$DATA_FOLDER_PATH:/app/data" -v "$TEEHR_EVALUATION_DIR:$TEEHR_EVALUATION_DIR" "${IMAGE_NAME}:${teehr_image_tag}" --data_folder_stem "$DATA_FOLDER_STEM" --teehr_evaluation_dir "$TEEHR_EVALUATION_DIR"; then
         handle_error "TEEHR evaluation failed"
     fi
 
