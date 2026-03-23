@@ -298,7 +298,7 @@ print_welcome_banner
 print_section_header "TEEHR EVALUATION SETUP"
 
 echo -e "${INFO_MARK} ${BWhite}TEEHR will evaluate model outputs against observations${Color_Off}"
-echo -e "  ${ARROW} Learn more: ${UBlue}https://rtiinternational.github.io/ngiab-teehr/${Color_Off}\n"
+echo -e "  ${ARROW} Learn more: ${UBlue}https://github.com/CIROH-UA/ngiab-teehr/${Color_Off}\n"
 
 if [ "$DO_STARTUP_PROMPT" == true ]; then
     echo -e "${ARROW} ${BWhite}Would you like to run a TEEHR evaluation on your model outputs?${Color_Off}"
