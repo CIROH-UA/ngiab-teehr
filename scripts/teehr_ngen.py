@@ -36,8 +36,8 @@ from utils import (
 
 logger = logging.getLogger(__name__)
 
-NGEN_OUTPUT_DIR = Path("/home/slamont/NextGen/ngen-data/AWI_16_2863657_007")  # for testing
-# NGEN_OUTPUT_DIR = Path("data")
+# NGEN_OUTPUT_DIR = Path("/home/slamont/NextGen/ngen-data/AWI_16_2863657_007")  # for testing
+NGEN_OUTPUT_DIR = Path("data")
 
 NGEN_METRICS_TABLE_NAME = "ngen_metrics"
 
@@ -223,15 +223,15 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     if args.data_folder_stem is None:
-        args.data_folder_stem = "AWI_16_2863657_007"  # for testing locally
-        # raise ValueError("Please provide a data folder stem using --data_folder_stem")
+        # args.data_folder_stem = "AWI_16_2863657_007"  # for testing locally
+        raise ValueError("Please provide a data folder stem using --data_folder_stem")
     data_folder_stem = re.sub(
         r"[^a-zA-Z0-9_]",
         "_",
         args.data_folder_stem
     ).lower()
     if args.teehr_evaluation_dir is None:
-        args.teehr_evaluation_dir = "/home/slamont/temp/ngiab_teehr_warehouse"  # for testing locally
-        # raise ValueError("Please provide a TEEHR evaluation directory using --teehr_evaluation_dir")
+        # args.teehr_evaluation_dir = "/home/slamont/temp/ngiab_teehr_warehouse"  # for testing locally
+        raise ValueError("Please provide a TEEHR evaluation directory using --teehr_evaluation_dir")
     teehr_evaluation_dir = Path(args.teehr_evaluation_dir)
     main(data_folder_stem, teehr_evaluation_dir)
