@@ -18,6 +18,7 @@ from pathlib import Path
 import argparse
 import re
 import logging
+import shutil
 
 import pandas as pd
 from teehr import LocalReadWriteEvaluation
@@ -25,17 +26,18 @@ from teehr import Configuration
 from teehr import DeterministicMetrics as dm
 
 from utils import (
-    get_simulation_output_csv,
-    get_simulation_output_netcdf,
     get_gages_from_hydrofabric,
     get_simulation_start_end_time,
     get_simulation_output_format,
+    write_netcdf_output_to_cache,
+    write_csv_output_to_cache,
+    write_parquet_output_to_cache
 )
 
 logger = logging.getLogger(__name__)
 
-# NGEN_OUTPUT_DIR = Path("/home/slamont/NextGen/ngen-data/AWI_16_2863657_007")  # for testing
-NGEN_OUTPUT_DIR = Path("data")
+NGEN_OUTPUT_DIR = Path("/home/slamont/NextGen/ngen-data/AWI_16_2863657_007")  # for testing
+# NGEN_OUTPUT_DIR = Path("data")
 
 NGEN_METRICS_TABLE_NAME = "ngen_metrics"
 
@@ -68,14 +70,14 @@ def main(
         create_dir=True  # currently doesn't do anything if it already exists
     )
     ev.enable_logging()
-    # Set up path for caching NGEN output.
-    ngen_output_cache_filepath = Path(
+    ngen_output_cache_dir = Path(
         ev.cache_dir,
-        "ngen_output",
-        "formatted_ngen_output.parquet"
+        "ngen_output"
     )
-    ngen_output_cache_filepath.parent.mkdir(parents=True, exist_ok=True)
-    # Extract data from NGEN output and prepare for loading to TEEHR.
+    # If the ngen cache dir already exists delete it with shutil
+    if ngen_output_cache_dir.exists():
+        shutil.rmtree(ngen_output_cache_dir)
+    ngen_output_cache_dir.mkdir(parents=True, exist_ok=True)
     # Get the start and end time of the simulation.
     start_date, end_date = get_simulation_start_end_time(NGEN_OUTPUT_DIR)
     # Get the NGEN-USGS gages from the hydrofabric.
@@ -85,51 +87,65 @@ def main(
             "No USGS gages found in the hydrofabric!"
             f" Output directory: {NGEN_OUTPUT_DIR.stem}"
         )
-    logger.info(f"Found {len(ngen_usgs_gages)} USGS gages in the hydrofabric.")
-    # Check for netcdf or csv output files.
-    # TODO: Add support for parquet here?
-    sim_output_format = get_simulation_output_format(NGEN_OUTPUT_DIR)
-    logger.info(f"Simulation output format: {sim_output_format}")
-    # Read the NGEN output timeseries.
-    gage_output_list = []
-    for gage_pair in ngen_usgs_gages:
-        if sim_output_format == "netcdf":
-            gage_output = get_simulation_output_netcdf(
-                gage_pair[0],
-                NGEN_OUTPUT_DIR
-            )
-        elif sim_output_format == "csv":
-            gage_output = get_simulation_output_csv(
-                gage_pair[0],
-                NGEN_OUTPUT_DIR
-            )
-        gage_output["ngen_id"] = "ngen-" + gage_pair[0].split("-")[1]
-        gage_output["usgs_id"] = "usgs-" + gage_pair[1]
-        gage_output_list.append(gage_output)
-    all_ngen_output = pd.concat(gage_output_list)
-    all_ngen_output.to_parquet(ngen_output_cache_filepath)
-    # Get primary locations and load to the TEEHR Evaluation.
-    usgs_location_ids = all_ngen_output["usgs_id"].unique().tolist()
+    usgs_location_ids = [
+        "usgs-" + gage_pair[1] for gage_pair in ngen_usgs_gages
+    ]
     # Load the location data (USGS points)
     ev.download.locations(
         ids=usgs_location_ids,
         load=True
     )
     teehr_usgs_locations = ev.locations.to_pandas()["id"].tolist()
+    # Limit the ngen_stem_ids to those that are in teehr_usgs_locations
+    ngen_stem_ids = [
+        ngen_wb_id.split("-")[1] for ngen_wb_id, usgs_id in ngen_usgs_gages
+        if "usgs-" + usgs_id in teehr_usgs_locations
+    ]
+    logger.info(
+        f"Found {len(teehr_usgs_locations)} USGS gages in the hydrofabric"
+        " that are present in the TEEHR-Cloud data warehouse."
+    )
+    # Check for netcdf or csv output files.
+    sim_output_format = get_simulation_output_format(NGEN_OUTPUT_DIR)
+    logger.info(f"Simulation output format: {sim_output_format}")
+
+    # Read the NGEN output timeseries.
+    if sim_output_format == "netcdf":
+        write_netcdf_output_to_cache(
+            ngen_stem_ids=ngen_stem_ids,
+            folder_to_eval=NGEN_OUTPUT_DIR,
+            ngen_configuration_name=ngen_configuration_name,
+            secondary_cache_dir=ngen_output_cache_dir
+        )
+    elif sim_output_format == "csv":
+        write_csv_output_to_cache(
+            ngen_stem_ids=ngen_stem_ids,
+            folder_to_eval=NGEN_OUTPUT_DIR,
+            ngen_configuration_name=ngen_configuration_name,
+            secondary_cache_dir=ngen_output_cache_dir
+        )
+    elif sim_output_format == "parquet":
+        write_parquet_output_to_cache(
+            ngen_stem_ids=ngen_stem_ids,
+            folder_to_eval=NGEN_OUTPUT_DIR,
+            ngen_configuration_name=ngen_configuration_name,
+            secondary_cache_dir=ngen_output_cache_dir
+        )
     ev.download.location_crosswalks(
         primary_location_id=teehr_usgs_locations,
         secondary_location_id_prefix="nwm30",
         load=True
     )
     # Load the USGS-NGEN Crosswalk.
-    tmp_df = all_ngen_output[~all_ngen_output["ngen_id"].duplicated()]
-    ngen_usgs_eval_xwalk_df = tmp_df[["usgs_id", "ngen_id"]].copy()
-    ngen_usgs_eval_xwalk_df.rename(
-        columns={
-            "usgs_id": "primary_location_id",
-            "ngen_id": "secondary_location_id"
-        }, inplace=True
+    ngen_usgs_eval_xwalk_df = pd.DataFrame(
+        ngen_usgs_gages,
+        columns=["secondary_location_id", "primary_location_id"]
     )
+    # Fix the prefixes.
+    ngen_usgs_eval_xwalk_df["secondary_location_id"] = \
+        ngen_usgs_eval_xwalk_df["secondary_location_id"].str.replace("wb-", "ngen-")
+    ngen_usgs_eval_xwalk_df["primary_location_id"] = \
+        "usgs-" + ngen_usgs_eval_xwalk_df["primary_location_id"]
     # Drop any entries not in the TEEHR locations table.
     ngen_usgs_eval_xwalk_df = ngen_usgs_eval_xwalk_df[
         ngen_usgs_eval_xwalk_df["primary_location_id"]
@@ -155,7 +171,8 @@ def main(
         name="nwm30_retrospective",
         load=True
     )
-    # Load the timeseries.
+    # Load the NGIAB output.
+    ev.secondary_timeseries.load_parquet(in_path=ngen_output_cache_dir)
     # Download primary (USGS) timeseries from the TEEHR-Cloud warehouse.
     ev.download.primary_timeseries(
         configuration_name="usgs_observations",
@@ -175,21 +192,6 @@ def main(
         load=True,
         page_size=2000000,
         timeout=120
-    )
-    # Load the NGEN simulation timeseries
-    ngen_df = pd.read_parquet(ngen_output_cache_filepath)
-    ngen_df = ngen_df[ngen_df["usgs_id"].isin(teehr_usgs_locations)]
-    ngen_df["reference_time"] = None
-    ngen_df["unit_name"] = "m^3/s"
-    ngen_df["variable_name"] = "streamflow_hourly_inst"
-    ngen_df["configuration_name"] = ngen_configuration_name
-    ev.secondary_timeseries.load_dataframe(
-        df=ngen_df,
-        field_mapping={
-            "current_time": "value_time",
-            "flow": "value",
-            "ngen_id": "location_id"
-        }
     )
     # Write metrics to a new table (overwrite if it already exists).
     (
@@ -221,15 +223,15 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     if args.data_folder_stem is None:
-        # args.data_folder_stem = "AWI_16_2863657_007"  # for testing locally
-        raise ValueError("Please provide a data folder stem using --data_folder_stem")
+        args.data_folder_stem = "AWI_16_2863657_007"  # for testing locally
+        # raise ValueError("Please provide a data folder stem using --data_folder_stem")
     data_folder_stem = re.sub(
         r"[^a-zA-Z0-9_]",
         "_",
         args.data_folder_stem
     ).lower()
     if args.teehr_evaluation_dir is None:
-        # args.teehr_evaluation_dir = "/home/slamont/temp/ngiab_teehr_warehouse"  # for testing locally
-        raise ValueError("Please provide a TEEHR evaluation directory using --teehr_evaluation_dir")
+        args.teehr_evaluation_dir = "/home/slamont/temp/ngiab_teehr_warehouse"  # for testing locally
+        # raise ValueError("Please provide a TEEHR evaluation directory using --teehr_evaluation_dir")
     teehr_evaluation_dir = Path(args.teehr_evaluation_dir)
     main(data_folder_stem, teehr_evaluation_dir)
