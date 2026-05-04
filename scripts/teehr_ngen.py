@@ -159,7 +159,7 @@ def main(
     ev.configurations.add(
         Configuration(
             name=ngen_configuration_name,
-            type="secondary",
+            timeseries_type="secondary",
             description="Nextgen simulation output"
         )
     )
