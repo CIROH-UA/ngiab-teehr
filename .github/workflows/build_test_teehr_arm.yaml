@@ -8,14 +8,11 @@ on:
 
 jobs:
   build-test-arm:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04-arm-aws
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -28,14 +25,10 @@ jobs:
           load: true
           push: false
           tags: ngiab-teehr:test-arm
-          build-args: |
-            DISABLE_NUMCODECS_AVX2=1
-            DISABLE_NUMCODECS_SSE2=1
 
       - name: Test Python
         run: |
           docker run --rm \
-            --platform linux/arm64 \
             --entrypoint python \
             ngiab-teehr:test-arm \
             --version
@@ -43,7 +36,6 @@ jobs:
       - name: Test TEEHR import
         run: |
           docker run --rm \
-            --platform linux/arm64 \
             --entrypoint python \
             ngiab-teehr:test-arm \
             -c "import teehr; print('TEEHR import successful')"
@@ -51,7 +43,6 @@ jobs:
       - name: Test Java
         run: |
           docker run --rm \
-            --platform linux/arm64 \
             --entrypoint java \
             ngiab-teehr:test-arm \
             -version
@@ -59,7 +50,6 @@ jobs:
       - name: Test GDAL
         run: |
           docker run --rm \
-            --platform linux/arm64 \
             --entrypoint gdalinfo \
             ngiab-teehr:test-arm \
             --version
