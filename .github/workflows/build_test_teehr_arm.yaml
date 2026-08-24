@@ -1,0 +1,62 @@
+name: Build and Test NGIAB TEEHR ARM
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-test-arm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ARM Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          load: true
+          push: false
+          tags: ngiab-teehr:test-arm
+
+      - name: Test Python
+        run: |
+          docker run --rm \
+            --platform linux/arm64 \
+            --entrypoint python \
+            ngiab-teehr:test-arm \
+            --version
+
+      - name: Test TEEHR import
+        run: |
+          docker run --rm \
+            --platform linux/arm64 \
+            --entrypoint python \
+            ngiab-teehr:test-arm \
+            -c "import teehr; print('TEEHR import successful')"
+
+      - name: Test Java
+        run: |
+          docker run --rm \
+            --platform linux/arm64 \
+            --entrypoint java \
+            ngiab-teehr:test-arm \
+            -version
+
+      - name: Test GDAL
+        run: |
+          docker run --rm \
+            --platform linux/arm64 \
+            --entrypoint gdalinfo \
+            ngiab-teehr:test-arm \
+            --version
