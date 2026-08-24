@@ -12,6 +12,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 RUN pip install uv
+
+ARG DISABLE_NUMCODECS_AVX2=0
+ARG DISABLE_NUMCODECS_SSE2=0
+
+ENV DISABLE_NUMCODECS_AVX2=${DISABLE_NUMCODECS_AVX2}
+ENV DISABLE_NUMCODECS_SSE2=${DISABLE_NUMCODECS_SSE2}
+
 RUN uv pip install --no-cache-dir -r requirements.txt --system
 
 # Runtime stage

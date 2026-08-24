@@ -28,6 +28,9 @@ jobs:
           load: true
           push: false
           tags: ngiab-teehr:test-arm
+          build-args: |
+            DISABLE_NUMCODECS_AVX2=1
+            DISABLE_NUMCODECS_SSE2=1
 
       - name: Test Python
         run: |
