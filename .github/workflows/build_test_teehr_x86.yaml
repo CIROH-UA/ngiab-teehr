@@ -14,42 +14,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build x86 Docker image
-        uses: docker/build-push-action@v6
+      - name: Build and test x86 image
+        uses: ./.github/actions/docker-test
         with:
-          context: .
-          platforms: linux/amd64
-          load: true
-          push: false
-          tags: ngiab-teehr:test
-
-      - name: Test Python
-        run: |
-          docker run --rm \
-            --entrypoint python \
-            ngiab-teehr:test \
-            --version
-
-      - name: Test TEEHR import
-        run: |
-          docker run --rm \
-            --entrypoint python \
-            ngiab-teehr:test \
-            -c "import teehr; print('TEEHR import successful')"
-
-      - name: Test Java
-        run: |
-          docker run --rm \
-            --entrypoint java \
-            ngiab-teehr:test \
-            -version
-
-      - name: Test GDAL
-        run: |
-          docker run --rm \
-            --entrypoint gdalinfo \
-            ngiab-teehr:test \
-            --version
+          platform: linux/amd64
+          image-tag: ngiab-teehr:test-x86
+          buildcloud-endpoint: ${{ secrets.BUILDCLOUD_ENDPOINT }}
