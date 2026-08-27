@@ -27,7 +27,7 @@ jobs:
         with:
           version: "lab:latest"
           driver: cloud
-          endpoint: "cirohua/ngiab-dev"
+          endpoint: ${{ secrets.BUILDCLOUD_ENDPOINT }}
 
       - name: Build and push test image
         uses: docker/build-push-action@v6
