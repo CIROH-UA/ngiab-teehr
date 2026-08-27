@@ -10,9 +10,15 @@ permissions:
   contents: read
 
 jobs:
-  test-login:
+  build-and-push:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: OIDC token exchange
         id: docker_oidc
         uses: docker/oidc-action@v1
@@ -24,3 +30,11 @@ jobs:
         with:
           username: ${{ vars.DOCKERHUB_ORGANIZATION }}
           password: ${{ steps.docker_oidc.outputs.token }}
+
+      - name: Build and push test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.test
+          push: true
+          tags: awiciroh/oidc-test:oidc-test
