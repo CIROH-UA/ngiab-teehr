@@ -30,6 +30,7 @@ jobs:
         with:
           username: ${{ vars.DOCKERHUB_ORGANIZATION }}
           password: ${{ steps.docker_oidc.outputs.token }}
+          scope: 'awiciroh/oidc-test@push'
 
       - name: Build and push test image
         uses: docker/build-push-action@v6
