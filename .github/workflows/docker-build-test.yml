@@ -27,7 +27,7 @@ jobs:
         with:
           version: "lab:latest"
           driver: cloud
-          endpoint: "awiciroh/ngiab-dev"
+          endpoint: "cirohua/ngiab-dev"
 
       - name: Build and push test image
         uses: docker/build-push-action@v6
