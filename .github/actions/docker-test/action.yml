@@ -1,0 +1,44 @@
+name: "Docker Smoke Tests"
+
+description: "Run smoke tests for the NGIAB TEEHR Docker image"
+
+inputs:
+  image-tag:
+    description: "Docker image tag to test"
+    required: true
+
+runs:
+  using: "composite"
+
+  steps:
+    - name: Test Python
+      shell: bash
+      run: |
+        docker run --rm \
+          --entrypoint python \
+          ${{ inputs.image-tag }} \
+          --version
+
+    - name: Test TEEHR import
+      shell: bash
+      run: |
+        docker run --rm \
+          --entrypoint python \
+          ${{ inputs.image-tag }} \
+          -c "import teehr; print('TEEHR import successful')"
+
+    - name: Test Java
+      shell: bash
+      run: |
+        docker run --rm \
+          --entrypoint java \
+          ${{ inputs.image-tag }} \
+          -version
+
+    - name: Test GDAL
+      shell: bash
+      run: |
+        docker run --rm \
+          --entrypoint gdalinfo \
+          ${{ inputs.image-tag }} \
+          --version
