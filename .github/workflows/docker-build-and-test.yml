@@ -1,4 +1,4 @@
-name: Test Docker Build
+name: Build and Test NGIAB TEEHR
 
 on:
   pull_request:
@@ -12,6 +12,7 @@ permissions:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,3 +37,24 @@ jobs:
           file: ./Dockerfile.test
           push: true
           tags: awiciroh/ngiab-teehr:delete-me
+
+      - name: Build multi-architecture Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+
+      - name: Build amd64 image for smoke tests
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ngiab-teehr:test
+
+      - name: Run Docker smoke tests
+        uses: ./.github/actions/docker-test
+        with:
+          image-tag: ngiab-teehr:test
