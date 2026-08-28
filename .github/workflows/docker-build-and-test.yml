@@ -1,4 +1,4 @@
-name: Test Docker Build
+name: Build and Test NGIAB TEEHR
 
 on:
   pull_request:
@@ -10,8 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  build-and-push:
+  build-and-test:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -22,17 +23,22 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USER }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Set up Docker Buildx (cloud)
+      - name: Set up Docker Buildx with cloud driver
         uses: docker/setup-buildx-action@v3
         with:
           version: "lab:latest"
           driver: cloud
           endpoint: ${{ secrets.BUILDCLOUD_ENDPOINT }}
 
-      - name: Build and push test image
+      - name: Build and push multi-architecture Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile.test
+          platforms: linux/amd64,linux/arm64
           push: true
-          tags: awiciroh/ngiab-teehr:delete-me
+          tags: awiciroh/ngiab-teehr:pr-${{ github.event.pull_request.number }}
+
+      - name: Run Docker smoke tests
+        uses: ./.github/actions/docker-test
+        with:
+          image-tag: awiciroh/ngiab-teehr:pr-${{ github.event.pull_request.number }}
