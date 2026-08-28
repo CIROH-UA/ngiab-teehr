@@ -36,9 +36,9 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: awiciroh/ngiab-teehr:delete-me
+          tags: awiciroh/ngiab-teehr:pr-${{ github.event.pull_request.number }}
 
       - name: Run Docker smoke tests
         uses: ./.github/actions/docker-test
         with:
-          image-tag: awiciroh/ngiab-teehr:delete-me
+          image-tag: awiciroh/ngiab-teehr:pr-${{ github.event.pull_request.number }}
